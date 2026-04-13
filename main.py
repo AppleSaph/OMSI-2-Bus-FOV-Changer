@@ -1,8 +1,6 @@
 import os
 from tkinter import Tk, filedialog, simpledialog, messagebox
 
-lines_changed = []
-
 
 def get_files(folder, only_buses):
     if only_buses:
@@ -13,36 +11,52 @@ def get_files(folder, only_buses):
 
 def replace_fov(file, number, backup):
     file_changed = False
+    file_lines_changed = []
     # read
-    with open(file, 'r') as f:
-        lines = f.readlines()
+    try:
+        with open(file, 'r', encoding='utf-8') as f:
+            original_lines = f.readlines()
+        lines = original_lines.copy()
+    except FileNotFoundError:
+        messagebox.showerror("File Not Found", f"File not found: {file}")
+        return []
+    except PermissionError:
+        messagebox.showerror("Permission Error", f"Permission denied: {file}")
+        return []
     # replace
-    i = 0
-    while i < len(lines):
-        line = lines[i]
+    line_index = 0
+    while line_index < len(lines):
+        line = lines[line_index]
         if "[add_camera_driver]" in line:
             file_changed = True
-            i += 5
-            old_value = lines[i].replace('\r', '').replace('\n', '')
-            print(f"Replaced FOV from {old_value} to {number} on line {i} in file {file}")
-            lines_changed.append(f"Replaced FOV from {old_value} to {number} on line {i} in file {file}")
-            lines[i] = str(number) + '\n'
-        i += 1
+            line_index += 5
+            if line_index >= len(lines):
+                print(f"Unexpected end of file {file} after [add_camera_driver]")
+                break
+            old_value = lines[line_index].replace('\r', '').replace('\n', '')
+            print(f"Replaced FOV from {old_value} to {number} on line {line_index} in file {file}")
+            file_lines_changed.append(f"Replaced FOV from {old_value} to {number} on line {line_index} in file {file}")
+            lines[line_index] = str(number) + '\n'
+        line_index += 1
     # write
     if file_changed:
         if backup:
-            with open(file + '.bak', 'w') as f:
-                f.writelines(lines)
-        with open(file, 'w') as f:
+            with open(file + '.bak', 'w', encoding='utf-8') as f:
+                f.writelines(original_lines)
+        with open(file, 'w', encoding='utf-8') as f:
             f.writelines(lines)
     else:
         print(f"No FOV found in file {file}")
+    return file_lines_changed
 
 
 def replace_in_files(folder, files, number, backup):
-    for f in files:
-        file = os.path.join(folder, f)
-        replace_fov(file, number, backup)
+    all_lines_changed = []
+    for filename in files:
+        file_path = os.path.join(folder, filename)
+        file_lines_changed = replace_fov(file_path, number, backup)
+        all_lines_changed.extend(file_lines_changed)
+    return all_lines_changed
 
 
 if __name__ == '__main__':
@@ -55,24 +69,24 @@ if __name__ == '__main__':
         exit(1)
     # ask for number with windows pop up
     number = simpledialog.askstring("FOV selection", "Enter the desired FOV")
-    if number is None or number == "":
+    if number is None or number.strip() == "":
         messagebox.showinfo("No number entered", "No number entered. Program will exit")
+        exit(1)
+    # Validate FOV input is a number (int or float)
+    try:
+        float(number)
+    except ValueError:
+        messagebox.showinfo("Invalid input", "FOV must be a valid number. Program will exit")
         exit(1)
     # ask for boolean with windows pop up
     only_buses = messagebox.askyesno("Only buses", "Do you want to only include buses?")
-    if only_buses is None:
-        messagebox.showinfo("No selection made", "No selection made. Program will exit")
-        exit(1)
     # ask for backup with windows pop up
     backup = messagebox.askyesno("Backup", "Do you want to backup the files?")
-    if backup is None:
-        messagebox.showinfo("No selection made", "No selection made. Program will exit")
-        exit(1)
     # get all files in folder and subfolders that end with .bus if only_buses is true
     files = get_files(folder, only_buses)
     print(files)
     if len(files) == 0:
         messagebox.showinfo("No files found", "No files found in the folder")
     # replace the fov in all files
-    replace_in_files(folder, files, number, backup)
+    lines_changed = replace_in_files(folder, files, number, backup)
     messagebox.showinfo("Finished", f"Finished replacing FOV in {len(files)} files.\n\n{lines_changed}")
