@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Iterable
 
@@ -155,7 +156,13 @@ class FovService:
             backup_path = file_path.with_suffix(file_path.suffix + ".bak")
             backup_path.write_text("".join(original_lines), encoding=chosen_encoding)
 
-        file_path.write_text("".join(lines), encoding=chosen_encoding)
+        # Write to a temp file first, then atomically replace the original so it is not
+        # corrupted if writing fails partway through.
+        tmp_name = str(file_path.with_suffix(file_path.suffix + ".tmp"))
+        with open(tmp_name, "w", encoding=chosen_encoding) as f:
+            f.write("".join(lines))
+
+        os.replace(tmp_name, file_path)
 
         return FileResult(
             file_path=file_path,
