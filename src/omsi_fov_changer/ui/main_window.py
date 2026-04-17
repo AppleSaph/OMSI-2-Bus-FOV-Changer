@@ -5,7 +5,7 @@ from pathlib import Path
 from PySide6.QtWidgets import QMainWindow, QMessageBox, QTextEdit, QTreeView, QVBoxLayout, QWidget, QLabel, QFileDialog
 
 from omsi_fov_changer.domain.models import BusFileInfo
-from omsi_fov_changer.services.fov_service import FovService
+from omsi_fov_changer.services.fov_service import FovService, discover_files
 from omsi_fov_changer.ui.camera_tree_controller import CameraTreeController
 from omsi_fov_changer.ui.main_window_sections import (
     build_action_section,
@@ -154,6 +154,9 @@ class MainWindow(QMainWindow):
             updates_by_file=updates_by_file,
         )
         self._render_batch_result(batch)
+
+        # Reload from disk so the model reflects what was just saved.
+        self.scan_files()
         self._refresh_save_button_label()
 
     def _confirm_discard_pending_changes(self, next_source: str) -> bool:
@@ -233,7 +236,7 @@ class MainWindow(QMainWindow):
     def _discover_files(self, source: Path) -> list[Path]:
         if source.is_file():
             return [source]
-        return self.service.discover_files(
+        return discover_files(
             folder=source,
             only_buses=self.only_buses_checkbox.isChecked(),
             recursive=self.recursive_checkbox.isChecked(),

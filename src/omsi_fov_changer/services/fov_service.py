@@ -121,7 +121,7 @@ class FovService:
 
         for index, line in enumerate(lines):
             stripped = line.strip()
-            if stripped != "[add_camera_driver]":
+            if stripped not in SUPPORTED_CAMERA_TAGS:
                 continue
 
             value_index = index + fov_line_offset
@@ -215,6 +215,4 @@ class FovService:
 
         return None
 
-    @staticmethod
-    def discover_files(folder, only_buses, recursive):
-        return discover_files(folder=folder, only_buses=only_buses, recursive=recursive)
+

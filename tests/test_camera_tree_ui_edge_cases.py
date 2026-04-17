@@ -385,8 +385,8 @@ def test_tree_loads_without_errors_for_only_none_description_cameras() -> None:
         assert child.text() == f"Driver camera at line {i}"
 
 
-def test_sync_persistent_editors_logs_warning_on_count_mismatch(monkeypatch, caplog) -> None:
-    """Test that a warning is logged when editor widgets and camera rows do not match."""
+def test_sync_persistent_editors_updates_model_from_editor(monkeypatch) -> None:
+    """Test that sync reads text from the persistent editor and writes it to the model."""
     controller = _create_tree_controller()
 
     camera = CameraPosition(
@@ -403,12 +403,72 @@ def test_sync_persistent_editors_logs_warning_on_count_mismatch(monkeypatch, cap
     )
 
     controller.load([bus_info])
-    monkeypatch.setattr(controller.tree_view, "findChildren", lambda *args, **kwargs: [], raising=False)
 
-    with caplog.at_level(logging.WARNING):
-        controller.sync_persistent_editors_to_model()
+    # Verify initial state: new FOV matches current FOV.
+    parent_item = controller.camera_model.item(0, 0)
+    assert parent_item is not None
+    new_fov_item = parent_item.child(0, 2)
+    assert new_fov_item.text() == "55"
 
-    assert "Persistent editor count mismatch" in caplog.text
+    # Simulate the user typing a different value in the persistent editor.
+    mock_editor_text = ["72"]
+
+    def make_editor(idx):
+        return MockEditor(mock_editor_text[0])
+
+    monkeypatch.setattr(controller.tree_view, "editor", make_editor)
+
+    controller.sync_persistent_editors_to_model()
+
+    # Verify the model was updated from the editor text.
+    assert new_fov_item.text() == "72"
+
+
+def test_sync_persistent_editors_skips_unchanged(monkeypatch) -> None:
+    """Test that sync does not overwrite when editor text matches model."""
+    controller = _create_tree_controller()
+
+    camera = CameraPosition(
+        tag="[add_camera_driver]",
+        description="0: Looking leftmost",
+        line_number=10,
+        fov_line_number=15,
+        current_fov="55",
+    )
+    bus_info = BusFileInfo(
+        path=Path("/test/bus.bus"),
+        cameras=[camera],
+        bus_name="Test Bus",
+    )
+
+    controller.load([bus_info])
+
+    parent_item = controller.camera_model.item(0, 0)
+    assert parent_item is not None
+    new_fov_item = parent_item.child(0, 2)
+    original_text = new_fov_item.text()
+
+    # Simulate editor returning the same text.
+
+    def make_editor(idx):
+        return MockEditor("55")
+
+    monkeypatch.setattr(controller.tree_view, "editor", make_editor)
+
+    controller.sync_persistent_editors_to_model()
+
+    # Text should remain unchanged (no unnecessary setText call).
+    assert new_fov_item.text() == original_text
+
+
+class MockEditor:
+    """Minimal mock of a QLineEdit editor widget for testing."""
+
+    def __init__(self, text: str) -> None:
+        self._text = text
+
+    def text(self) -> str:
+        return self._text
 
 
 

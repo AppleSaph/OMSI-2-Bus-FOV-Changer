@@ -5,11 +5,12 @@ from collections.abc import Callable
 from pathlib import Path
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QFont, QFontMetrics, QStandardItem, QStandardItemModel
-from PySide6.QtWidgets import QHeaderView, QLineEdit, QTreeView
+from PySide6.QtGui import QFontMetrics, QStandardItem, QStandardItemModel
+from PySide6.QtWidgets import QHeaderView, QTreeView
 
 from omsi_fov_changer.domain.models import BusFileInfo, CameraPosition
 from omsi_fov_changer.ui.fov_editor_delegate import FovEditorDelegate
+from omsi_fov_changer.ui.view_utils import set_item_modified_style
 
 PendingChangeCallback = Callable[[], None]
 logger = logging.getLogger(__name__)
@@ -102,9 +103,12 @@ class CameraTreeController:
         self._configure_tree_columns()
 
     def sync_persistent_editors_to_model(self) -> None:
-        editor_widgets = [widget for widget in self.tree_view.findChildren(QLineEdit)]
-        camera_rows: list[tuple[QStandardItem, QStandardItem, QStandardItem]] = []
+        """Sync text from persistent QLineEdit editors back into the model.
 
+        Uses tree_view.editor(index) for deterministic 1:1 mapping between
+        each column-2 QModelIndex and its editor widget, avoiding reliance on
+        findChildren() ordering which Qt does not guarantee.
+        """
         for row in range(self.camera_model.rowCount()):
             parent = self.camera_model.item(row, 0)
             if parent is None:
@@ -115,24 +119,18 @@ class CameraTreeController:
 
             for child_row in range(parent.rowCount()):
                 position_item = parent.child(child_row, 0)
-                current_item = parent.child(child_row, 1)
                 new_item = parent.child(child_row, 2)
-                if position_item is None or current_item is None or new_item is None:
+                if position_item is None or new_item is None:
                     continue
-                camera_rows.append((position_item, current_item, new_item))
 
-        if len(editor_widgets) != len(camera_rows):
-            logger.warning(
-                "Persistent editor count mismatch: %s editor widget(s) for %s camera row(s); skipping sync",
-                len(editor_widgets),
-                len(camera_rows),
-            )
-            return
-
-        for editor, (_, _, new_item) in zip(editor_widgets, camera_rows, strict=False):
-            new_text = editor.text().strip()
-            if new_item.text() != new_text:
-                new_item.setText(new_text)
+                # Get the QModelIndex for column 2 of this row and query its editor directly.
+                child_index = position_item.index()
+                new_index = child_index.sibling(child_index.row(), 2)
+                editor = self.tree_view.editor(new_index)
+                if editor is not None:
+                    new_text = editor.text().strip()
+                    if new_item.text() != new_text:
+                        new_item.setText(new_text)
 
     def count_pending_changes(self) -> int:
         return sum(len(items) for items in self.collect_updates_by_file().values())
@@ -167,14 +165,21 @@ class CameraTreeController:
         return targets
 
     def apply_bulk_value(self, targets: list[QStandardItem], bulk_value: str) -> None:
-        for item in targets:
-            new_item = item.parent().child(item.row(), 2) if item.parent() is not None else None
-            if new_item is None:
-                continue
-            new_item.setText(bulk_value)
-            self._set_row_modified(item.parent(), item.row(), modified=True)
+        """Applies a single value to multiple camera FOV fields."""
+        self._updating_model = True
+        try:
+            for item in targets:
+                new_item = item.parent().child(item.row(), 2) if item.parent() is not None else None
+                if new_item is None:
+                    continue
+                new_item.setText(bulk_value)
+                # _on_item_changed returns early when _updating_model=True, so we set
+                # modified state here directly instead of relying on the signal callback.
+                self._set_row_modified(item.parent(), item.row(), modified=True)
 
-        self._notify_pending_changes_changed()
+            self._notify_pending_changes_changed()
+        finally:
+            self._updating_model = False
 
     def collect_updates_by_file(self) -> dict[Path, dict[int, str]]:
         updates_by_file: dict[Path, dict[int, str]] = {}
@@ -198,9 +203,6 @@ class CameraTreeController:
 
                 child_data = position_item.data(Qt.ItemDataRole.UserRole)
                 if not isinstance(child_data, dict) or child_data.get("type") != "camera":
-                    continue
-
-                if position_item.checkState() != Qt.CheckState.Checked:
                     continue
 
                 new_value = new_item.text().strip()
@@ -337,23 +339,7 @@ class CameraTreeController:
         position_item.setText(f"{label}{suffix}" if modified else label)
 
         for item in (position_item, current_item, new_item):
-            self._set_item_modified_style(item, modified)
-
-    @staticmethod
-    def _set_item_modified_style(item: QStandardItem, modified: bool) -> None:
-        if modified:
-            item.setData(QColor("#fff3cd"), Qt.ItemDataRole.BackgroundRole)
-            item.setData(QColor("#7a4b00"), Qt.ItemDataRole.ForegroundRole)
-            font: QFont = item.font()
-            font.setBold(True)
-            item.setData(font, Qt.ItemDataRole.FontRole)
-            return
-
-        item.setData(None, Qt.ItemDataRole.BackgroundRole)
-        item.setData(None, Qt.ItemDataRole.ForegroundRole)
-        font: QFont = item.font()
-        font.setBold(False)
-        item.setData(font, Qt.ItemDataRole.FontRole)
+            set_item_modified_style(item, modified)
 
     def _notify_pending_changes_changed(self) -> None:
         if self._on_pending_changes_changed is not None:
