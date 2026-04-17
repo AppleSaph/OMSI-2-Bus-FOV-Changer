@@ -7,7 +7,7 @@ from pathlib import Path
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QModelIndex
 from PySide6.QtGui import QFontMetrics, QStandardItem, QStandardItemModel
-from PySide6.QtWidgets import QHeaderView, QTreeView
+from PySide6.QtWidgets import QHeaderView, QLineEdit, QTreeView
 
 from omsi_fov_changer.domain.models import BusFileInfo, CameraPosition
 from omsi_fov_changer.ui.fov_editor_delegate import FovEditorDelegate
@@ -106,7 +106,7 @@ class CameraTreeController:
     def sync_persistent_editors_to_model(self) -> None:
         """Sync text from persistent QLineEdit editors back into the model.
 
-        Uses tree_view.editor(index) for deterministic 1:1 mapping between
+        Uses tree_view.indexWidget(index) for deterministic 1:1 mapping between
         each column-2 QModelIndex and its editor widget, avoiding reliance on
         findChildren() ordering which Qt does not guarantee.
         """
@@ -135,9 +135,9 @@ class CameraTreeController:
 
     def _get_editor_text(self, index) -> str | None:
         """Return the text from the persistent editor for a given QModelIndex."""
-        editor = self.tree_view.editor(index)
-        if editor is not None:
-            return editor.text()
+        widget = self.tree_view.indexWidget(index)
+        if widget is not None and isinstance(widget, QLineEdit):
+            return widget.text()
         return None
 
     def count_pending_changes(self) -> int:
