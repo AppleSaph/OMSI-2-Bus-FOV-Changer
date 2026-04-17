@@ -275,7 +275,9 @@ class MainWindow(QMainWindow):
 
     def _read_bulk_fov(self) -> str:
         bulk_text = self.bulk_fov_input.text().strip()
-        float(bulk_text)
+        if not bulk_text:
+            raise ValueError("Bulk FOV field is empty.")
+        float(bulk_text)  # raises ValueError for non-numeric input
         return bulk_text
 
     def _fit_tree_columns(self) -> None:
