@@ -411,12 +411,11 @@ def test_sync_persistent_editors_updates_model_from_editor(monkeypatch) -> None:
     assert new_fov_item.text() == "55"
 
     # Simulate the user typing a different value in the persistent editor.
-    mock_editor_text = ["72"]
 
-    def make_editor(idx):
-        return MockEditor(mock_editor_text[0])
+    def mock_get_editor_text(idx):
+        return "72"
 
-    monkeypatch.setattr(controller.tree_view, "editor", make_editor)
+    monkeypatch.setattr(controller, "_get_editor_text", mock_get_editor_text)
 
     controller.sync_persistent_editors_to_model()
 
@@ -450,25 +449,16 @@ def test_sync_persistent_editors_skips_unchanged(monkeypatch) -> None:
 
     # Simulate editor returning the same text.
 
-    def make_editor(idx):
-        return MockEditor("55")
+    def mock_get_editor_text(idx):
+        return "55"
 
-    monkeypatch.setattr(controller.tree_view, "editor", make_editor)
+    monkeypatch.setattr(controller, "_get_editor_text", mock_get_editor_text)
 
     controller.sync_persistent_editors_to_model()
 
     # Text should remain unchanged (no unnecessary setText call).
     assert new_fov_item.text() == original_text
 
-
-class MockEditor:
-    """Minimal mock of a QLineEdit editor widget for testing."""
-
-    def __init__(self, text: str) -> None:
-        self._text = text
-
-    def text(self) -> str:
-        return self._text
 
 
 

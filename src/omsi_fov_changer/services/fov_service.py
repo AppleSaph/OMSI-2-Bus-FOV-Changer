@@ -94,25 +94,16 @@ class FovService:
             updates_by_line_number: dict[int, str],
             fov_line_offset: int = 5,
     ) -> FileResult:
-        encodings = ("utf-8", "latin-1")
-        original_lines: list[str] = []
-        chosen_encoding: str | None = None
-
-        for encoding in encodings:
-            try:
-                original_lines = file_path.read_text(encoding=encoding).splitlines(keepends=True)
-                chosen_encoding = encoding
-                break
-            except UnicodeDecodeError:
-                continue
-
-        if chosen_encoding is None:
+        result = self._read_text(file_path, keepends=True)
+        if result is None:
             return FileResult(
                 file_path=file_path,
                 changed=False,
                 change_count=0,
                 warnings=[f"Could not decode file: {file_path}"],
             )
+
+        chosen_encoding, original_lines = result
 
         lines = original_lines.copy()
         changes: list[ChangeRecord] = []
@@ -174,6 +165,16 @@ class FovService:
             warnings=warnings,
         )
 
+    def _read_text(self, file_path: Path, keepends: bool = False) -> tuple[str, list[str]] | None:
+        """Read a file trying multiple encodings. Returns (encoding, lines) or None."""
+        for encoding in ("utf-8", "latin-1"):
+            try:
+                content = file_path.read_text(encoding=encoding)
+                return encoding, content.splitlines(keepends=keepends)
+            except UnicodeDecodeError:
+                continue
+        return None
+
     @staticmethod
     def _detect_line_ending(lines: list[str]) -> str:
         for line in lines:
@@ -183,14 +184,12 @@ class FovService:
                 return "\n"
         return "\n"
 
-    @staticmethod
-    def _read_text_lines(file_path: Path) -> list[str] | None:
-        for encoding in ("utf-8", "latin-1"):
-            try:
-                return file_path.read_text(encoding=encoding).splitlines()
-            except UnicodeDecodeError:
-                continue
-        return None
+    def _read_text_lines(self, file_path: Path) -> list[str] | None:
+        result = self._read_text(file_path)
+        if result is None:
+            return None
+        _, lines = result
+        return lines
 
     @staticmethod
     def _extract_bus_name(lines: list[str]) -> str | None:

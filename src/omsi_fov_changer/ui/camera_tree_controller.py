@@ -5,6 +5,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from PySide6.QtCore import Qt
+from PySide6.QtCore import QModelIndex
 from PySide6.QtGui import QFontMetrics, QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import QHeaderView, QTreeView
 
@@ -126,11 +127,18 @@ class CameraTreeController:
                 # Get the QModelIndex for column 2 of this row and query its editor directly.
                 child_index = position_item.index()
                 new_index = child_index.sibling(child_index.row(), 2)
-                editor = self.tree_view.editor(new_index)
-                if editor is not None:
-                    new_text = editor.text().strip()
-                    if new_item.text() != new_text:
-                        new_item.setText(new_text)
+                editor_text = self._get_editor_text(new_index)
+                if editor_text is not None:
+                    stripped = editor_text.strip()
+                    if new_item.text() != stripped:
+                        new_item.setText(stripped)
+
+    def _get_editor_text(self, index) -> str | None:
+        """Return the text from the persistent editor for a given QModelIndex."""
+        editor = self.tree_view.editor(index)
+        if editor is not None:
+            return editor.text()
+        return None
 
     def count_pending_changes(self) -> int:
         return sum(len(items) for items in self.collect_updates_by_file().values())
@@ -265,7 +273,7 @@ class CameraTreeController:
 
         return [position_item, current_item, new_item]
 
-    def _open_persistent_editors_for_parent(self, parent_index) -> None:
+    def _open_persistent_editors_for_parent(self, parent_index: QModelIndex) -> None:
         parent_item = self.camera_model.itemFromIndex(parent_index)
         if parent_item is None:
             return
